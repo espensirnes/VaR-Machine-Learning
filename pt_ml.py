@@ -10,6 +10,7 @@ window = 250
 
 pt.options.pqdkm.set([0,0,0,2,2])
 pt.options.supress_output.set(True)
+pt.options.multicoll_threshold_max.set(30)
 
 
 RETURNS = 'returns'
@@ -57,7 +58,11 @@ def back_test(df):
     df_windows =pd.DataFrame(df.iloc[i:i+window])
     next_period_signal = df['signal'].iloc[i+window]
     rtrn = df[RETURNS].iloc[i+window]
-    pt_95t, pt_99t, pt_sigmat, gamma, psi, signalcoeft, ll, conv, s =  get_var(df_windows,next_period_signal, use_signal=True)
+    try:
+      pt_95t, pt_99t, pt_sigmat, gamma, psi, signalcoeft, ll, conv, s =  get_var(df_windows,next_period_signal, use_signal=True)
+    except np.linalg.LinAlgError:
+      print('Singular matrix')
+      pt_95t, pt_99t, ll, conv = 0,0,None, False
     print(f'VaR 95% {i}:{-pt_95t}, r:{rtrn}, vio:{rtrn<-pt_95t}, sgnl:{signalcoeft}, gamma:{gamma}, psi:{psi}, LL:{ll}, conv:{conv}')
     signals.append(next_period_signal)
     ret.append(rtrn)  
