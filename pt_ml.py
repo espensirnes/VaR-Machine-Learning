@@ -21,7 +21,7 @@ FILE = '20230621 - S&P500_2012_2023for_paneltime.csv'
 def main():
   df = pd.read_csv(FILE, parse_dates=True, index_col='Date')
   df['signal'] = df[SIGNALS]**2
-  df_res = back_test(df)
+  back_test(df)
 
 
 def get_var(df, signal, use_signal=True):
@@ -54,7 +54,7 @@ def back_test(df):
   signalcoef = []
 
   t0=time.time()
-  for i in range(0, len(df)-window-1):
+  for i in range(len(df)-window-1):
     df_windows =pd.DataFrame(df.iloc[i:i+window])
     next_period_signal = df['signal'].iloc[i+window]
     rtrn = df[RETURNS].iloc[i+window]
@@ -108,21 +108,9 @@ def plot_and_store(pt_99, pt_95, pt_sigma, ret, signalcoef, gammaarr, psiarr, ll
     df_res[lbl] = d
   
   df_res.to_pickle('var_results.pd')
-  plt.legend(loc="lower right")
   print(f"For the 95% VaR there were {sum(violations95)/len(violations95)}% violations")
-  print(f"pof, tbfi, tbf for 95%: {tbf.pof(violations95,0.95), tbf.tbf(violations95,0.95), tbf.tbfi(violations95,0.95)}")
+  print(f"95%: pof: {tbf.pof(violations95,0.95)[0]}, tbfi: {tbf.tbfi(violations95,0.95)[0]}, tbf {tbf.tbf(violations95,0.95)[0]}")
   
-  plt.show()
-  
-  plt.plot(ret, label='normalized returns')
-  plt.plot(np.array(signals)*100, label='signal')
-  plt.legend(loc="lower right")
-  plt.show()
-
-  return df_res
-
-
-
 
 
 main()
