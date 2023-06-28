@@ -6,8 +6,7 @@ import paneltime as pt
 import time
 import tbf
 import os
-
-window = 250
+import zipfile
 
 
 pt.options.supress_output.set(True)
@@ -20,19 +19,38 @@ RETURNS = 'returns'
 PRED_RETURNS = 'returns predicted'
 SIGNAL = 'signal'
 FORCE_RUN = True
-
+ZIPFILE = 'data.zip'
+datadir = ZIPFILE.replace('.zip','')
+OUTPUT_DEST ='output'
 
 def main():
+  if not os.path.exists(datadir):
+    os.makedirs(datadir)
+    
+  if not os.path.isfile(datadir + '/' + 'sp500_index.csv'):
+    zipfile.ZipFile(ZIPFILE, 'r').extractall(datadir)
+    
+  if not os.path.exists(OUTPUT_DEST):
+    os.makedirs(OUTPUT_DEST)
+       
+  #defines the names of the price variables
+  pricenames = {'sp500_index.csv':'S&P500'}
   
-  back_test_data('sp500_index.csv', 'S&P500', 250)
+  for f in os.listdir(datadir): 
+    for prediction in [True, False]:
+      if f in pricenames:
+        back_test_data(f, pricenames[f], 250, prediction)
 
-def back_test_data(filename, pricename, window):
+def back_test_data(filename, pricename, window, predict):
   
   #defining file names
-  fnameroot = filename.replace('.csv','')
+  s = ''
+  if predict:
+    s = '_pred'
+  fnameroot = OUTPUT_DEST + '/' + filename.replace('.csv','')
   df_file_name = fnameroot + '.pd'
-  backtest_file_name = fnameroot + '_backtest.pd'
-  stats_file_name = fnameroot + '_stats.pd'
+  backtest_file_name = fnameroot + s + '_backtest.pd'
+  stats_file_name = fnameroot + s + '_stats.pd'
   
   
   #if data has been saved in a previous session, then load it, if not, open the data, calcuate returns and save it:
@@ -40,7 +58,7 @@ def back_test_data(filename, pricename, window):
     df = pd.read_pickle(df_file_name)
   else:
     df = pd.read_csv(filename, parse_dates=True, index_col='Date')
-    df['returns']=np.log(df[pricename]).diff() 
+    df['returns']=np.log(df.iloc[pricename]).diff() 
     df.to_pickle(df_file_name)
    
   #predicting returns if not all ready done, and creating a signal variable (only for paneltime)
@@ -53,19 +71,45 @@ def back_test_data(filename, pricename, window):
   
   df = df.dropna()
   #back testing if not all ready done:
-  if os.path.isfile(backtest_file_name)  and False:
+  if os.path.isfile(backtest_file_name):
     df_res = pd.read_pickle(backtest_file_name)
   else:
-    df_res = back_test(df, window)
+    df_res = back_test(df, window, predict)
     df_res.to_pickle(backtest_file_name)
     
   
   #Calculating test statistics:
-  df_stats = calc_statistics(df_res)
-  df_stats.to_pickle(stats_file_name)
+  df_stats_table = calc_statistics(df_res, predict)
+  df_stats_table.to_pickle(stats_file_name)
   
-  print(df_stats)
+  pd.set_option('display.max_columns', None)
+  pd.set_option('display.max_colwidth', None)  
+  print(df_stats_table)
 
+def extract_rar(path):
+  if not os.path.exists('data'):
+    os.makedirs('d')
+    
+  # Specify the path to the RAR archive
+  rar_path = 'path/to/archive.rar'
+  
+  # Specify the path to the CSV file within the RAR archive
+  file_path_within_rar = 'path/within/archive/file.csv'
+  
+  # Open the RAR archive
+  with rarfile.RarFile(path) as rf:
+      # Extract the CSV file to a temporary location
+      rf.extract(file_path_within_rar, path='temp')
+  
+  # Read the CSV file using pandas
+  df = pd.read_csv('temp/' + file_path_within_rar)
+  
+  # Perform operations with the DataFrame as needed
+  
+  # Finally, delete the temporary extracted file
+  os.remove('temp/' + file_path_within_rar)
+  
+  
 
 def estimate_returns(df):
   df[PRED_RETURNS] = np.nan
@@ -77,52 +121,49 @@ def estimate_returns(df):
     ret = df[RETURNS].iloc[i+window]
     df_windows = pd.DataFrame(df.iloc[i:i+window])
     s = pt.execute(RETURNS,df_windows,console_output=True)
-    if False:
-      try:
-        s = pt.execute(RETURNS,df_windows,console_output=True)
-      except Exception as e:
-        print(e)
-        df.loc[df.index[i+window],PRED_RETURNS] = 0
-
-      
-    
     s.predict()
     print(f"iter {i}; actual return: {ret}, estimated: {s.ll.u_pred}")
     
     df.loc[df.index[i+window],PRED_RETURNS] = s.ll.u_pred
     
     
-def paneltime_est(df, signal, prev_sigma):
+def paneltime_est(df, signal, prev_sigma, predict):
   z = norm.ppf(PVAR)
   s = pt.execute(RETURNS,df, HF = SIGNAL , console_output=True)
-  if False:
-    try:
-      s = pt.execute(RETURNS,df, HF = SIGNAL , console_output=True)
-    except Exception as e:
-      print(e)
-      return 0, 0, None
-  s.predict(signal) 
+  if predict:
+    s.predict(signal)
+  else:
+    s.predict()
   sigma = s.ll.var_pred**0.5
   return - z[0]*sigma, - z[1]*sigma, sigma
 
-def normal_est(df, signal):
+def normal_est(df, signal, predict):
   #using signal
-  x = np.append(df[RETURNS], signal)
+  if predict:
+    x = np.append(df[RETURNS], signal)
+  else:
+    x = df[RETURNS]
   z = norm.ppf(PVAR)
   sigma = np.std(x, ddof=1)
   return - z[0]*sigma, - z[1]*sigma, sigma
 
-def historcal_est(df, signal):
+def historcal_est(df, signal, predict):
   #using signal
-  x = np.append(df[RETURNS], signal)
+  if predict:
+    x = np.append(df[RETURNS], signal)
+  else:
+    x = df[RETURNS]
   return abs(np.quantile(x, PVAR[0])), abs(np.quantile(x, PVAR[1]))
 
 s2tmp=[]
 rettmp=[]
 
-def ewma_est(df, s, initvar, signal):
+def ewma_est(df, s, initvar, signal, predict):
   #using signal
-  x = np.append(df[RETURNS], signal)
+  if predict:
+    x = np.append(df[RETURNS], signal)
+  else:
+    x = df[RETURNS]
   z = norm.ppf(PVAR)
   lmbda = 0.94
   r_prev = x[-1]
@@ -139,7 +180,7 @@ def ewma_est(df, s, initvar, signal):
 
 
   
-def back_test(df, window):
+def back_test(df, window, predict):
   pt.options.pqdkm.set([0,0,0,2,2])
   pt.options.tolerance.set(0.001)
   df_res = pd.DataFrame(columns=['EWMA_sigma'])
@@ -157,10 +198,10 @@ def back_test(df, window):
     d['return'] = df[RETURNS].iloc[i+window]
     d['Date'] = df.index[i+window]
     #obtaining the different VaR estimates
-    d['Paneltime95'], d['Paneltime99'], d['Paneltime_sigma']   =  paneltime_est(df_windows, d['signal'], d['Paneltime_sigma'] )
-    d['Normal95'], d['Normal99'], d['Normal_sigma']            =  normal_est(df_windows,d['pred_returns'])
-    d['Historical95'], d['Historical99']                       =  historcal_est(df_windows,d['pred_returns'])
-    d['EWMA95'], d['EWMA99'], d['EWMA_sigma']                  =  ewma_est(df_windows, df_res['EWMA_sigma'], d['Normal_sigma'], d['pred_returns'] )
+    d['Paneltime95'], d['Paneltime99'], d['Paneltime_sigma']   =  paneltime_est(df_windows, d['signal'], d['Paneltime_sigma'] , predict)
+    d['Normal95'], d['Normal99'], d['Normal_sigma']            =  normal_est(df_windows,d['pred_returns'], predict)
+    d['Historical95'], d['Historical99']                       =  historcal_est(df_windows,d['pred_returns'], predict)
+    d['EWMA95'], d['EWMA99'], d['EWMA_sigma']                  =  ewma_est(df_windows, df_res['EWMA_sigma'], d['Normal_sigma'], d['pred_returns'] , predict)
 
     
     print(f"{i}, 95% VaRs pt:{d['Paneltime95']}, norm:{d['Normal95']}, hist:{d['Historical95']}, EWMA:{d['EWMA95']} | "
@@ -174,13 +215,17 @@ def back_test(df, window):
   return df_res
   
   
-def calc_statistics(df):
+def calc_statistics(df, predict):
+  s = ''
+  if predict:
+    s = '_pred'
   df_stat = pd.DataFrame(index=pd.Index([], name='Method'))
   for p in ['95','99']:
     for method in ['Paneltime', 'Normal', 'Historical', 'EWMA']:
+      name = method+p + s
       d = tbf.tbf(-df[method+p]>df['return'], float(p)/100)
       df_d = pd.DataFrame(d, index=pd.Index([method+p], name='Method'))
-      df_stat = pd.concat((df_stat, df_d), ignore_index=True)
+      df_stat = pd.concat((df_stat, df_d))
 
   return df_stat
 

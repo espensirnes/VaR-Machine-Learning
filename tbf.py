@@ -3,7 +3,7 @@ import pandas as pd
 
 def test_tbf_against_matematica():
   
-  df = pd.read_csv("matematica_data.csv",delimiter=";", dtype=float)
+  df = pd.read_csv("data/matematica_data.csv",delimiter=";", dtype=float)
   
   violations = np.array(df['returns'])<-np.array(df['normal95'])
   print(f"pof matematica: 0.46147(0.49694), pof python:{'%s (%s)' %pof(violations, 0.95)}")
@@ -38,8 +38,8 @@ def pof(violations, VaR):
     return None, None
   p = 1 - VaR
   p_obs = x/N
-  numr = np.log(((1-p)**(N-x))*(p**x))
-  denom = np.log(((1-p_obs)**(N-x))*(p_obs**x))
+  numr = (N-x)*np.log(1-p) + x* np.log(p)
+  denom = (N-x)*np.log(1-p_obs) + x*np.log(p_obs)
   LR = -2*(numr - denom)
   sign = 1-chi2.cdf(LR, 1) 
   return LR, sign
@@ -54,9 +54,10 @@ def tbfi(violations, VaR):
   n = np.append(dates[0],dates[1:] - dates[:-1])
   p = 1-VaR
   p_obs = 1/n
-  numr = ((1-p)**(n-1))*p
-  denom = ((1-p_obs)**(n-1))*p_obs
-  LR = -2*np.log(numr/denom) 
+  numr = (n-1)*np.log(1-p) + np.log(p)
+  denom = (n-1)*np.log(1-p_obs + (n==1)) + np.log(p_obs)
+  LR = -2*(numr - denom) 
+
   sign = 1-chi2.cdf(np.sum(LR), sum(violations)) 
   return [np.sum(LR), sign] + quartiles(n)
 
