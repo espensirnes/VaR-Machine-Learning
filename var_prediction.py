@@ -23,6 +23,9 @@ ZIPFILE = 'data.zip'
 datadir = ZIPFILE.replace('.zip','')
 OUTPUT_DEST ='output'
 
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_colwidth', None)  
+
 def main():
   if not os.path.exists(datadir):
     os.makedirs(datadir)
@@ -36,10 +39,13 @@ def main():
   #defines the names of the price variables
   pricenames = {'sp500_index.csv':'S&P500'}
   
+  df_stat = pd.DataFrame(index=pd.Index([], name='Method'))
   for f in os.listdir(datadir): 
     for prediction in [True, False]:
       if f in pricenames:
-        back_test_data(f, pricenames[f], 250, prediction)
+        d = back_test_data(f, pricenames[f], 250, prediction)
+        df_stat = pd.concat((df_stat, d))
+  print(df_stat)
 
 def back_test_data(filename, pricename, window, predict):
   
@@ -47,10 +53,10 @@ def back_test_data(filename, pricename, window, predict):
   s = ''
   if predict:
     s = '_pred'
-  fnameroot = OUTPUT_DEST + '/' + filename.replace('.csv','')
-  df_file_name = fnameroot + '.pd'
-  backtest_file_name = fnameroot + s + '_backtest.pd'
-  stats_file_name = fnameroot + s + '_stats.pd'
+  fnameroot = filename.replace('.csv','')
+  df_file_name =  OUTPUT_DEST + '/' + fnameroot + '.pd'
+  backtest_file_name =  OUTPUT_DEST + '/' + fnameroot + s + '_backtest.pd'
+  stats_file_name =  OUTPUT_DEST + '/' + fnameroot + s + '_stats.pd'
   
   
   #if data has been saved in a previous session, then load it, if not, open the data, calcuate returns and save it:
@@ -64,7 +70,7 @@ def back_test_data(filename, pricename, window, predict):
   #predicting returns if not all ready done, and creating a signal variable (only for paneltime)
   df = df.dropna()
   if not PRED_RETURNS in df:
-    estimate_returns(df)
+    estimate_returns(df, window)
     df[SIGNAL] = 1000*df[PRED_RETURNS]**2
   print(f"Correlation between predicted and actual returns: {df[RETURNS].corr(df[PRED_RETURNS])}")
   df.to_pickle(df_file_name)
@@ -79,11 +85,10 @@ def back_test_data(filename, pricename, window, predict):
     
   
   #Calculating test statistics:
-  df_stats_table = calc_statistics(df_res, predict)
+  df_stats_table = calc_statistics(df_res, predict, fnameroot)
   df_stats_table.to_pickle(stats_file_name)
   
-  pd.set_option('display.max_columns', None)
-  pd.set_option('display.max_colwidth', None)  
+
   print(df_stats_table)
 
 def extract_rar(path):
@@ -111,7 +116,7 @@ def extract_rar(path):
   
   
 
-def estimate_returns(df):
+def estimate_returns(df, window):
   df[PRED_RETURNS] = np.nan
   print('predicting ...')
   pt.options.pqdkm.set([2,2,0,2,2])
@@ -215,7 +220,7 @@ def back_test(df, window, predict):
   return df_res
   
   
-def calc_statistics(df, predict):
+def calc_statistics(df, predict, fname):
   s = ''
   if predict:
     s = '_pred'
@@ -224,6 +229,7 @@ def calc_statistics(df, predict):
     for method in ['Paneltime', 'Normal', 'Historical', 'EWMA']:
       name = method+p + s
       d = tbf.tbf(-df[method+p]>df['return'], float(p)/100)
+      d['File'] = fname
       df_d = pd.DataFrame(d, index=pd.Index([method+p], name='Method'))
       df_stat = pd.concat((df_stat, df_d))
 
