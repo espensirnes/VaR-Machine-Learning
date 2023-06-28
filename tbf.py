@@ -13,15 +13,29 @@ def test_tbf_against_matematica():
 from scipy.stats import chi2
 
 def tbf(violations,VaR):
-  a, _ = pof(violations, VaR)
-  b, _ = tbfi(violations, VaR)
+  d = {}
+  d['LRatioPOF'], d['PValuePOF'] = pof(violations, VaR)
   
-  sign = 1-chi2.cdf(a+b, sum(violations) + 1) 
-  return a + b, sign
+  (d['LRatioTBFI'], d['PValueTBFI'] , 
+   d['TBFMin'],    d['TBFQ1'],    d['TBFQ2'],   d['TBFQ3'],    d['TBFMax']) = tbfi(violations, VaR)
+  
+  d['N'] = len(violations)
+  if d['LRatioTBFI'] is None:
+    d['LRatioTBF'] = None
+    d['PValueTBF'] = None
+    return 
+  
+  d['LRatioTBF'] = d['LRatioTBFI'] + d['LRatioPOF']
+  
+  d['PValueTBF'] = 1-chi2.cdf(d['LRatioTBF'] , sum(violations) + 1) 
+  
+  return d
   
 def pof(violations, VaR):
   N = len(violations)
   x = sum(violations)
+  if x ==0:
+    return None, None
   p = 1 - VaR
   p_obs = x/N
   numr = np.log(((1-p)**(N-x))*(p**x))
@@ -31,6 +45,8 @@ def pof(violations, VaR):
   return LR, sign
 
 def tbfi(violations, VaR):
+  if sum(violations)==0:
+    return [None]*7
   N = len(violations)
   r = np.arange(N)
   violations[0] = False
@@ -42,4 +58,12 @@ def tbfi(violations, VaR):
   denom = ((1-p_obs)**(n-1))*p_obs
   LR = -2*np.log(numr/denom) 
   sign = 1-chi2.cdf(np.sum(LR), sum(violations)) 
-  return np.sum(LR), sign
+  return [np.sum(LR), sign] + quartiles(n)
+
+def quartiles(n):
+  q1 = np.percentile(n, 25)
+  q2 = np.percentile(n, 50)
+  q3 = np.percentile(n, 75)
+  tbf_max = np.max(n)
+  tbf_min = np.min(n)
+  return [tbf_min, q1, q2, q3, tbf_max]
