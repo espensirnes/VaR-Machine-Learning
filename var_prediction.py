@@ -43,9 +43,10 @@ def main():
   for f in os.listdir(datadir): 
     for prediction in [True, False]:
       if f in pricenames:
-        d = back_test_data(f, pricenames[f], 250, prediction)
+        d, fname = back_test_data(f, pricenames[f], 250, prediction)
         df_stat = pd.concat((df_stat, d))
   print(df_stat)
+  df_stat.to_pickle(OUTPUT_DEST + '/' + fname+'_allstats.pd')
 
 def back_test_data(filename, pricename, window, predict):
   
@@ -90,6 +91,8 @@ def back_test_data(filename, pricename, window, predict):
   
 
   print(df_stats_table)
+  
+  return df_stats_table, fnameroot
 
 def extract_rar(path):
   if not os.path.exists('data'):
@@ -221,16 +224,14 @@ def back_test(df, window, predict):
   
   
 def calc_statistics(df, predict, fname):
-  s = ''
-  if predict:
-    s = '_pred'
   df_stat = pd.DataFrame(index=pd.Index([], name='Method'))
   for p in ['95','99']:
     for method in ['Paneltime', 'Normal', 'Historical', 'EWMA']:
-      name = method+p + s
+      name = method+p
       d = tbf.tbf(-df[method+p]>df['return'], float(p)/100)
       d['File'] = fname
-      df_d = pd.DataFrame(d, index=pd.Index([method+p], name='Method'))
+      d['Prediction'] = predict
+      df_d = pd.DataFrame(d, index=pd.Index([name], name='Method'))
       df_stat = pd.concat((df_stat, df_d))
 
   return df_stat
