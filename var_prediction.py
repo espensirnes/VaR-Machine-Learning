@@ -22,6 +22,7 @@ FORCE_RUN = True
 ZIPFILE = 'data.zip'
 datadir = ZIPFILE.replace('.zip','')
 OUTPUT_DEST ='output'
+INPUT_SRC='data'
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_colwidth', None)  
@@ -55,6 +56,7 @@ def back_test_data(filename, pricename, window, predict):
   if predict:
     s = '_pred'
   fnameroot = filename.replace('.csv','')
+  input_f_name = INPUT_SRC + '/'+ filename
   df_file_name =  OUTPUT_DEST + '/' + fnameroot + '.pd'
   backtest_file_name =  OUTPUT_DEST + '/' + fnameroot + s + '_backtest.pd'
   stats_file_name =  OUTPUT_DEST + '/' + fnameroot + s + '_stats.pd'
@@ -64,8 +66,8 @@ def back_test_data(filename, pricename, window, predict):
   if os.path.isfile(df_file_name):
     df = pd.read_pickle(df_file_name)
   else:
-    df = pd.read_csv(filename, parse_dates=True, index_col='Date')
-    df['returns']=np.log(df.iloc[pricename]).diff() 
+    df = pd.read_csv(input_f_name, parse_dates=True, index_col='Date')
+    df['returns']=np.log(df[pricename]).diff() 
     df.to_pickle(df_file_name)
    
   #predicting returns if not all ready done, and creating a signal variable (only for paneltime)
